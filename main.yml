@@ -1,0 +1,40 @@
+name: Free RDP (Playit.io) - Auto Every 10 Minutes
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: windows-latest
+    steps:
+      - name: Generate random password and save
+        shell: powershell
+        run: |
+          $password = [System.Web.Security.Membership]::GeneratePassword(12,3)
+          net user RDPUser $password /add
+          net localgroup administrators RDPUser /add
+          echo "Username: RDPUser" > rdp.txt
+          echo "Password: $password" >> rdp.txt
+
+      - name: Enable RDP and Firewall
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+      - name: Download and Start Playit Tunnel
+        run: |
+          Invoke-WebRequest -Uri https://playit-cloud.github.io/downloads/playit-windows.zip -OutFile playit.zip
+          Expand-Archive playit.zip -DestinationPath .
+          echo "${{ secrets.PLAYIT_YAML }}" > config.yml
+          .\playit.exe -config config.yml
+
+      - name: Commit rdp.txt to repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git pull
+          git add rdp.txt
+          git commit -m "Update RDP credentials"
+          git push
